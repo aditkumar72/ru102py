@@ -61,14 +61,11 @@ class SiteStatsDaoRedis(SiteStatsDaoBase, RedisDaoBase):
             execute = True
 
         # START Challenge #3
-        def update_inside_transaction(pipe):
-            reporting_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            pipe.multi()
-            pipe.hset(key, SiteStats.LAST_REPORTING_TIME, reporting_time)
-            pipe.hincrby(key, SiteStats.COUNT, 1)
-            pipe.expire(key, WEEK_SECONDS)
-        
-        self.redis.transaction(update_inside_transaction, key)
+        reporting_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        pipeline.hset(key, SiteStats.LAST_REPORTING_TIME, reporting_time)
+        pipeline.hincrby(key, SiteStats.COUNT, 1)
+        pipeline.expire(key, WEEK_SECONDS)
+
 
         self.compare_and_update_script.update_if_greater(pipeline, key, SiteStats.MAX_WH, meter_reading.wh_generated)
         self.compare_and_update_script.update_if_less(pipeline, key, SiteStats.MIN_WH, meter_reading.wh_generated)
