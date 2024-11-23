@@ -2,6 +2,7 @@ from typing import Dict
 from typing import List
 from typing import Set
 
+from redisolar.api import capacity
 from redisolar.dao.base import SiteGeoDaoBase
 from redisolar.dao.base import SiteNotFound
 from redisolar.dao.redis.base import RedisDaoBase
@@ -54,29 +55,24 @@ class SiteGeoDaoRedis(SiteGeoDaoBase, RedisDaoBase):
 
     def _find_by_geo_with_capacity(self, query: GeoQuery, **kwargs) -> Set[Site]:
         # START Challenge #5
-        # Your task: Get the sites matching the GEO query.
-        # END Challenge #5
-
-        p = self.redis.pipeline(transaction=False)
-
-        # START Challenge #5
-        #
-        # Your task: Populate a dictionary called "scores" whose keys are site
-        # IDs and whose values are the site's capacity.
-        #
-        # Make sure to run any Redis commands against a Pipeline object
-        # for better performance.
-        # END Challenge #5
-
-        # Delete the next lines after you've populated a `site_ids`
-        # and `scores` variable.
-        site_ids: List[str] = []
-        scores: Dict[str, float] = {}
-
-        for site_id in site_ids:
-            if scores[site_id] and scores[site_id] > CAPACITY_THRESHOLD:
-                p.hgetall(self.key_schema.site_hash_key(site_id))
-        site_hashes = p.execute()
+        site_ids = self.redis.georadius(self.key_schema.site_geo_key(),
+            query.coordinate.lng, query.coordinate.lat, query.radius,
+            query.radius_unit.value
+        )
+        capacity_reports = self.redis.zrange(
+            self.key_schema.capacity_ranking_key(), 0, -1, withscores=True
+        )
+        site_ids_with_excess_capacity = {
+            report[0] for report in capacity_reports
+            if report[0] in site_ids and report[1] > 0.0
+        }
+        pipeline = self.redis.pipeline(transaction=False)
+        for site_id in site_ids_with_excess_capacity:
+            pipeline.hgetall(self.key_schema.site_hash_key(site_id))
+        sites = pipeline.execute()
+        site_hashes = [site for site in sites if site["id"]
+            and float(site["capacity"]) > CAPACITY_THRESHOLD
+        ]
 
         return {FlatSiteSchema().load(site) for site in site_hashes}
 
