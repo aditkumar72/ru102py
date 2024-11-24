@@ -59,20 +59,15 @@ class SiteGeoDaoRedis(SiteGeoDaoBase, RedisDaoBase):
             query.coordinate.lng, query.coordinate.lat, query.radius,
             query.radius_unit.value
         )
-        capacity_reports = self.redis.zrange(
-            self.key_schema.capacity_ranking_key(), 0, -1, withscores=True
-        )
-        site_ids_with_excess_capacity = {
-            report[0] for report in capacity_reports
-            if report[0] in site_ids and report[1] > 0.0
-        }
         pipeline = self.redis.pipeline(transaction=False)
-        for site_id in site_ids_with_excess_capacity:
-            pipeline.hgetall(self.key_schema.site_hash_key(site_id))
-        sites = pipeline.execute()
-        site_hashes = [site for site in sites if site["id"]
-            and float(site["capacity"]) > CAPACITY_THRESHOLD
-        ]
+        for site_id in site_ids:
+            pipeline.zscore(self.key_schema.capacity_ranking_key(), site_id)
+        scores = dict(zip(site_ids, pipeline.execute()))
+
+        for site_id in site_ids:
+            if scores[site_id] is None or scores[site_id] > CAPACITY_THRESHOLD:
+                pipeline.hgetall(self.key_schema.site_hash_key(site_id))
+        site_hashes = pipeline.execute()
 
         return {FlatSiteSchema().load(site) for site in site_hashes}
 
