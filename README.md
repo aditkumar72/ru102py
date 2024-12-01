@@ -1,3 +1,5 @@
+![Certificate of Completion](my-redis-certificate.png)
+
 # RediSolar Python
 
 This is the sample application codebase for the Redis University course [RU102PY, Redis for Python Developers](https://university.redis.com/courses/ru102py/).
